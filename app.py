@@ -224,35 +224,29 @@ def home():
 def generate():
     data = request.json
     idea = data.get("idea", "")
+
     if not idea:
         return jsonify({"error": "Idea manquante"}), 400
-    
+
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_KEY}"
     payload = {
         "contents": [
-            {
-                "parts": [
-                    {"text": SYSTEM_PROMPT},
-                    {"text": f"Idée utilisateur : {idea}"}
-                ]
-            }
+            {"parts": [{"text": SYSTEM_PROMPT}, {"text": f"Idée utilisateur : {idea}"}]}
         ]
     }
-    
+
     try:
         r = requests.post(url, json=payload)
-        r.raise_for_status()
-        result = r.json()
-        raw_text = result["candidates"][0]["content"]["parts"][0]["text"]
+        if r.status_code == 403:
+            return jsonify({"error": "403 Forbidden: Clé API invalide ou quota dépassé"}), 403
+        elif r.status_code != 200:
+            return jsonify({"error": f"Erreur API Gemini {r.status_code}: {r.text}"}), r.status_code
+
+        raw_text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
         clean_text = clean_gemini(raw_text)
-        
-        # Vérifie si JSON valide
-        try:
-            parsed = json.loads(clean_text)
-        except:
-            parsed = {"error": "Gemini n'a pas renvoyé un JSON valide"}
-        
+        parsed = json.loads(clean_text)
         return jsonify(parsed)
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -277,6 +271,22 @@ def generate_pdf_route():
             as_attachment=True,
             download_name='brief-musical.pdf'
         )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+    # =====================================================
+# 🔥 Route pour tester la clé API
+# =====================================================
+@app.route("/test-api")
+def test_api():
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key={GEMINI_KEY}"
+    payload = {"contents":[{"parts":[{"text":"Test clé et quota"}]}]}
+    try:
+        r = requests.post(url, json=payload)
+        return jsonify({
+            "status_code": r.status_code,
+            "response": r.text
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
