@@ -4,4 +4,4 @@ google-generativeai
 python-dotenv
 gunicorn
 reportlab
-
+requests

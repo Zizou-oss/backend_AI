@@ -2,15 +2,16 @@ import os
 import json
 import re
 import requests
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, Response
 from flask_cors import CORS
 from dotenv import load_dotenv
 from io import BytesIO
+import time
 
 # ReportLab imports
-from reportlab.lib.pagesizes import letter, A4 # type: ignore
+from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle  # type: ignore
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Table, TableStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_JUSTIFY
@@ -70,14 +71,19 @@ def clean_gemini(text):
     return "{}"
 
 # =====================================================
-# 🎨 Génération PDF avec ReportLab
+# 🎨 Génération PDF avec ReportLab - CORRIGÉ
 # =====================================================
 def generate_pdf(data):
     """Génère un PDF professionnel à partir du brief musical"""
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, 
-                          leftMargin=0.75*inch, rightMargin=0.75*inch,
-                          topMargin=1*inch, bottomMargin=0.75*inch)
+    doc = SimpleDocTemplate(
+        buffer, 
+        pagesize=A4, 
+        leftMargin=0.75*inch, 
+        rightMargin=0.75*inch,
+        topMargin=1*inch, 
+        bottomMargin=0.75*inch
+    )
     
     # Styles
     styles = getSampleStyleSheet()
@@ -102,9 +108,6 @@ def generate_pdf(data):
         spaceAfter=12,
         spaceBefore=20,
         fontName='Helvetica-Bold',
-        borderWidth=0,
-        borderColor=colors.HexColor('#8b5cf6'),
-        borderPadding=5,
         backColor=colors.HexColor('#f9fafb')
     )
     
@@ -121,72 +124,64 @@ def generate_pdf(data):
     
     # Configuration des sections avec icônes
     section_config = {
-        'style': {'icon': '🎨', 'title': 'Style Musical'},
-        'bpm': {'icon': '⏱️', 'title': 'Tempo'},
-        'key': {'icon': '🎹', 'title': 'Tonalité'},
-        'ambiance': {'icon': '🌊', 'title': 'Ambiance'},
-        'structure': {'icon': '🏗️', 'title': 'Structure'},
-        'instruments': {'icon': '🎸', 'title': 'Instruments'},
-        'drums_patterns': {'icon': '🥁', 'title': 'Patterns de Batterie'},
-        'presets_plugins': {'icon': '🎛️', 'title': 'Presets & Plugins'},
-        'mix_tips': {'icon': '🎚️', 'title': 'Conseils Mixage'},
-        'mastering_tips': {'icon': '✨', 'title': 'Conseils Mastering'},
-        'effects': {'icon': '🌀', 'title': 'Effets'},
-        'automation_tips': {'icon': '🤖', 'title': 'Automation'},
-        'arrangement_guide': {'icon': '📐', 'title': 'Arrangement'}
+        'style': {'icon': 'Style Musical', 'title': 'Style Musical'},
+        'bpm': {'icon': 'Tempo', 'title': 'Tempo'},
+        'key': {'icon': 'Tonalite', 'title': 'Tonalité'},
+        'ambiance': {'icon': 'Ambiance', 'title': 'Ambiance'},
+        'structure': {'icon': 'Structure', 'title': 'Structure'},
+        'instruments': {'icon': 'Instruments', 'title': 'Instruments'},
+        'drums_patterns': {'icon': 'Patterns Batterie', 'title': 'Patterns de Batterie'},
+        'presets_plugins': {'icon': 'Presets & Plugins', 'title': 'Presets & Plugins'},
+        'mix_tips': {'icon': 'Mixage', 'title': 'Conseils Mixage'},
+        'mastering_tips': {'icon': 'Mastering', 'title': 'Conseils Mastering'},
+        'effects': {'icon': 'Effets', 'title': 'Effets'},
+        'automation_tips': {'icon': 'Automation', 'title': 'Automation'},
+        'arrangement_guide': {'icon': 'Arrangement', 'title': 'Arrangement'}
     }
     
     # Construction du document
     story = []
     
-    # Titre principal avec emoji
-    title = Paragraph("🎧 MUSIC BRIEF GENERATOR", title_style)
+    # Titre principal
+    title = Paragraph("MUSIC BRIEF GENERATOR", title_style)
     story.append(title)
     story.append(Spacer(1, 0.3*inch))
-    
-    # Ligne de séparation
-    story.append(Spacer(1, 0.1*inch))
     
     # Parcourir toutes les sections
     for key, value in data.items():
         if key in section_config:
             config = section_config[key]
             
-            # Titre de section avec icône
+            # Titre de section
             section_title = Paragraph(
-                f"{config['icon']} {config['title']}", 
+                f"<b>{config['title']}</b>", 
                 section_style
             )
             story.append(section_title)
             story.append(Spacer(1, 0.1*inch))
             
-            # Contenu
+            # Contenu - Convertir en string proprement
+            content_text = ""
             if isinstance(value, dict):
-                # Si c'est un objet, afficher clé-valeur
                 for sub_key, sub_value in value.items():
                     formatted_key = sub_key.replace('_', ' ').title()
-                    content = Paragraph(
-                        f"<b>{formatted_key}:</b> {sub_value}",
-                        content_style
-                    )
-                    story.append(content)
+                    content_text += f"<b>{formatted_key}:</b> {sub_value}<br/>"
             elif isinstance(value, list):
-                # Si c'est une liste
                 for item in value:
-                    content = Paragraph(f"• {item}", content_style)
-                    story.append(content)
+                    content_text += f"• {item}<br/>"
             else:
-                # Texte simple - séparer par lignes
+                # Texte simple - nettoyer et formater
                 lines = str(value).split('\n')
                 for line in lines:
                     if line.strip():
-                        # Détecter si c'est une liste avec tirets
-                        if line.strip().startswith('-') or line.strip().startswith('•'):
-                            clean_line = line.strip().lstrip('-•').strip()
-                            content = Paragraph(f"• {clean_line}", content_style)
-                        else:
-                            content = Paragraph(line.strip(), content_style)
-                        story.append(content)
+                        clean_line = line.strip().lstrip('-•').strip()
+                        if clean_line:
+                            content_text += f"• {clean_line}<br/>"
+            
+            # Ajouter le paragraphe de contenu
+            if content_text:
+                content = Paragraph(content_text, content_style)
+                story.append(content)
             
             story.append(Spacer(1, 0.15*inch))
     
@@ -200,7 +195,7 @@ def generate_pdf(data):
         alignment=TA_CENTER
     )
     footer = Paragraph(
-        "Généré par Music Brief Generator • Brief professionnel pour production musicale",
+        "Genere par Music Brief Generator - Brief professionnel pour production musicale",
         footer_style
     )
     story.append(footer)
@@ -215,10 +210,73 @@ def generate_pdf(data):
 # =====================================================
 @app.route("/")
 def home():
-    return "API running ✔️"
+    return jsonify({
+        "status": "API running ✔️",
+        "endpoints": ["/generate", "/generate-stream", "/generate-pdf", "/test-api"]
+    })
 
 # =====================================================
-# 🔥 Route principale / génération
+# 🔥 Route STREAMING - NOUVEAU
+# =====================================================
+@app.route("/generate-stream", methods=["POST"])
+def generate_stream():
+    data = request.json
+    idea = data.get("idea", "")
+
+    if not idea:
+        return jsonify({"error": "Idea manquante"}), 400
+
+    def generate():
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:streamGenerateContent?key={GEMINI_KEY}&alt=sse"
+        payload = {
+            "contents": [
+                {"parts": [{"text": SYSTEM_PROMPT}, {"text": f"Idée utilisateur : {idea}"}]}
+            ]
+        }
+
+        try:
+            with requests.post(url, json=payload, stream=True) as r:
+                if r.status_code == 403:
+                    yield f"data: {json.dumps({'error': '403 Forbidden: Clé API invalide ou quota dépassé'})}\n\n"
+                    return
+                elif r.status_code != 200:
+                    yield f"data: {json.dumps({'error': f'Erreur API Gemini {r.status_code}'})}\n\n"
+                    return
+
+                accumulated_text = ""
+                for line in r.iter_lines():
+                    if line:
+                        line_str = line.decode('utf-8')
+                        if line_str.startswith('data: '):
+                            chunk_data = line_str[6:]  # Remove 'data: '
+                            try:
+                                chunk_json = json.loads(chunk_data)
+                                if 'candidates' in chunk_json and len(chunk_json['candidates']) > 0:
+                                    candidate = chunk_json['candidates'][0]
+                                    if 'content' in candidate and 'parts' in candidate['content']:
+                                        for part in candidate['content']['parts']:
+                                            if 'text' in part:
+                                                accumulated_text += part['text']
+                                                # Envoyer le chunk au frontend
+                                                yield f"data: {json.dumps({'chunk': part['text'], 'accumulated': accumulated_text})}\n\n"
+                            except json.JSONDecodeError:
+                                continue
+                
+                # À la fin, nettoyer et envoyer le JSON final
+                clean_text = clean_gemini(accumulated_text)
+                try:
+                    parsed = json.loads(clean_text)
+                    yield f"data: {json.dumps({'done': True, 'result': parsed})}\n\n"
+                except:
+                    yield f"data: {json.dumps({'error': 'Impossible de parser le JSON final'})}\n\n"
+
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return Response(generate(), mimetype='text/event-stream')
+
+# =====================================================
+# 🔥 Route principale / génération (ancienne, gardée pour compatibilité)
 # =====================================================
 @app.route("/generate", methods=["POST"])
 def generate():
@@ -251,7 +309,7 @@ def generate():
         return jsonify({"error": str(e)}), 500
 
 # =====================================================
-# 📄 Route génération PDF
+# 📄 Route génération PDF - CORRIGÉE
 # =====================================================
 @app.route("/generate-pdf", methods=["POST"])
 def generate_pdf_route():
@@ -272,9 +330,10 @@ def generate_pdf_route():
             download_name='brief-musical.pdf'
         )
     except Exception as e:
+        print(f"Erreur PDF: {str(e)}")  # Pour debug
         return jsonify({"error": str(e)}), 500
-    
-    # =====================================================
+
+# =====================================================
 # 🔥 Route pour tester la clé API
 # =====================================================
 @app.route("/test-api")
@@ -294,4 +353,4 @@ def test_api():
 # 🔹 RUN
 # =====================================================
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
